@@ -1,0 +1,70 @@
+version: "3.5"
+
+networks:
+  default:
+    external:
+      name: isobus_default
+
+volumes:
+    mongo-data:
+    mongo-config:
+    
+services:
+
+    ### Database for Orion Context Broker, IoT Agents ###
+    mongo-db:
+        image: mongo:3.6.19
+        hostname: mongo-db
+        container_name: mongo-db
+        restart: always
+        networks:
+            - default
+        command: --bind_ip_all --smallfiles
+        environment:
+            - "TZ=Europe/Madrid"
+            - "MONGO_INITDB_ROOT_USERNAME=mongo"
+            - "MONGO_INITDB_ROOT_PASSWORD=password"
+        ports:
+            - "27017:27017"
+        volumes:
+            - mongo-config:/data/configdb
+            - mongo-data:/data/db
+
+
+    ### Context Broker ###
+    orion:
+        image: fiware/orion-ld:0.8.0
+        hostname: orion
+        container_name: orion
+        restart: always
+        networks:
+            - default
+        command: -dbhost mongo-db -dbuser mongo -dbpwd password -logLevel WARN
+        depends_on:
+            - mongo-db
+        environment:
+            - "TZ=Europe/Madrid"
+        ports:
+            - "1026:1026"
+        healthcheck:
+            test: curl --fail -s http://orion:1026/version || exit 1
+            start_period: 1m
+         
+
+    ### Custom Components ###		
+    isobus:
+        image: elliotcloud/isobus:v0.1
+        hostname: isobus
+        container_name: isobus
+        restart: always
+        network_mode: host
+        depends_on:
+            - orion
+        environment:
+            - "TZ=Europe/Madrid"
+            - "ISOBUS_PORT=8080"
+            - "OCB_HOST=172.18.0.1"
+            - "OCB_PORT=1026"
+            - "ISOBUSDEVICE_NAME=${ISOBUSDEVICE_NAME}"
+        ports:
+            - "8080:8080"
